@@ -87,8 +87,17 @@ def _get_tts():
     except Exception as e:
         raise RuntimeError(_coqui_install_help(e))
     model_name = "tts_models/fr/css10/vits"
-    use_gpu = torch.cuda.is_available()
-    _tts = TTS(model_name=model_name, progress_bar=False, gpu=use_gpu)
+    _tts = TTS(model_name=model_name, progress_bar=False)
+    if torch.cuda.is_available():
+        try:
+            _tts.to("cuda")
+        except Exception:
+            pass
+    else:
+        try:
+            _tts.to("cpu")
+        except Exception:
+            pass
     return _tts
 
 
