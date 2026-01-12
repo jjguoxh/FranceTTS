@@ -10,7 +10,7 @@ env/
 ENV/
 env.bak/
 venv.bak/
-
+venv_coqui/
 # Packaging / build
 build/
 dist/
