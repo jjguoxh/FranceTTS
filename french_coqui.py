@@ -4,7 +4,6 @@ import sys
 import tempfile
 import threading
 import queue
-import unicodedata
 import re
 
 import numpy as np
@@ -14,15 +13,8 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_TEXT = "Bonjour, ceci est un test de synthèse vocale en français avec Coqui TTS."
 
-# 语音预设（Coqui 法语专用模型通常为单说话人；此处将预设映射为不同的风格/速度占位）
-VOICE_PRESETS = {
-    "默认": {"speed": 1.0, "speaker": None},
-    "男声1": {"speed": 0.95, "speaker": None},
-    "女声1": {"speed": 1.05, "speaker": None},
-    "男声2": {"speed": 0.9, "speaker": None},
-    "女声2": {"speed": 1.1, "speaker": None},
-    "随机": {"speed": None, "speaker": None},
-}
+# 语音预设已移除，使用默认配置
+
 
 _tts = None
 
@@ -101,41 +93,7 @@ def _get_tts():
     return _tts
 
 
-def _normalize_french_text(text: str) -> str:
-    text = (
-        text.replace("œ", "oe")
-        .replace("Œ", "OE")
-        .replace("æ", "ae")
-        .replace("Æ", "AE")
-    )
-    text = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
 
-
-def _french_pronunciation_hint(text: str) -> str:
-    t = text
-    rules = [
-        (r"(?i)\beau\b", "oh"),
-        (r"(?i)eau", "oh"),
-        (r"(?i)au", "oh"),
-        (r"(?i)oi", "wah"),
-        (r"(?i)ou", "oo"),
-        (r"(?i)gn", "ny"),
-        (r"(?i)\bje\b", "zhuh"),
-        (r"(?i)\bj'", "zh'"),
-        (r"(?i)\bj", "zh"),
-        (r"(?i)ch", "sh"),
-        (r"(?i)qu", "k"),
-        (r"(?i)\bce\b", "suh"),
-        (r"(?i)\bci\b", "see"),
-        (r"(?i)\bde\b", "duh"),
-        (r"(?i)\bdes\b", "day"),
-        (r"(?i)\ben\b", "ahn"),
-        (r"(?i)\bun\b", "uhn"),
-    ]
-    for pat, rep in rules:
-        t = re.sub(pat, rep, t)
-    return t
 
 
 def _split_text_for_tts(text: str, max_chars: int = 260):
@@ -186,27 +144,17 @@ def _split_text_for_tts(text: str, max_chars: int = 260):
 
 def _synthesize_to_file(
     text,
-    voice_name,
     speed,
-    normalize_french: bool = True,
-    pronunciation_hint: bool = False,
     progress_callback=None,
 ):
     tts = _get_tts()
-    preset = VOICE_PRESETS.get(voice_name, {"speed": 1.0, "speaker": None})
-
-    if normalize_french:
-        text = _normalize_french_text(text)
-    if pronunciation_hint:
-        text = _french_pronunciation_hint(text)
-
+    
     speed = int(speed)
     if speed < 1:
         speed = 1
     if speed > 10:
         speed = 10
-    speed_scale = preset["speed"] if preset["speed"] is not None else 1.0
-    speed_scale = speed_scale * (0.6 + 0.08 * speed)  # 语速映射到 Coqui 的 speed 比例
+    speed_scale = 1.0 * (0.6 + 0.08 * speed)  # 语速映射到 Coqui 的 speed 比例
 
     chunks = _split_text_for_tts(text)
     if not chunks:
@@ -347,22 +295,10 @@ def gui():
 
     controls = ttk.Frame(main_frame)
     controls.grid(row=1, column=0, sticky="ew", pady=(12, 0))
-    controls.columnconfigure(3, weight=1)
-
-    voice_label = ttk.Label(controls, text="语音")
-    voice_label.grid(row=0, column=0, sticky="w")
-    voice_var = tk.StringVar(value="默认")
-    voice_combo = ttk.Combobox(
-        controls,
-        textvariable=voice_var,
-        state="readonly",
-        values=list(VOICE_PRESETS.keys()),
-        width=12,
-    )
-    voice_combo.grid(row=0, column=1, padx=(8, 18), sticky="w")
+    controls.columnconfigure(1, weight=1)
 
     speed_label = ttk.Label(controls, text="语速")
-    speed_label.grid(row=0, column=2, sticky="w")
+    speed_label.grid(row=0, column=0, sticky="w")
     speed_var = tk.IntVar(value=5)
     speed_scale = ttk.Scale(
         controls,
@@ -372,25 +308,9 @@ def gui():
         command=lambda v: speed_var.set(int(float(v) + 0.5)),
     )
     speed_scale.set(5)
-    speed_scale.grid(row=0, column=3, sticky="ew", padx=(8, 8))
+    speed_scale.grid(row=0, column=1, sticky="ew", padx=(8, 8))
     speed_value = ttk.Label(controls, textvariable=speed_var, width=3)
-    speed_value.grid(row=0, column=4, sticky="e")
-
-    normalize_var = tk.BooleanVar(value=True)
-    normalize_checkbox = ttk.Checkbutton(
-        controls,
-        text="法语字符规范化（去除重音）",
-        variable=normalize_var,
-    )
-    normalize_checkbox.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10, 0))
-
-    hint_var = tk.BooleanVar(value=False)
-    hint_checkbox = ttk.Checkbutton(
-        controls,
-        text="法语发音辅助（实验）",
-        variable=hint_var,
-    )
-    hint_checkbox.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+    speed_value.grid(row=0, column=2, sticky="e")
 
     actions = ttk.Frame(main_frame)
     actions.grid(row=2, column=0, sticky="ew", pady=(12, 0))
@@ -602,20 +522,15 @@ def gui():
             if err is not None:
                 result_queue.put(("err", err))
                 return
-            voice = voice_var.get()
+            
             speed = speed_var.get()
-            normalize_french = bool(normalize_var.get())
-            pronunciation_hint = bool(hint_var.get())
 
             def on_progress(current, total):
                 result_queue.put(("progress", (current, total)))
 
             wav_path = _synthesize_to_file(
                 text,
-                voice,
                 speed,
-                normalize_french=normalize_french,
-                pronunciation_hint=pronunciation_hint,
                 progress_callback=on_progress,
             )
             result_queue.put(("ok", wav_path))
